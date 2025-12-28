@@ -2,33 +2,81 @@
 
 
 
-The system ingests data from multiple sources, normalizes it into a unified schema, exposes query APIs, and runs fully containerized with automated testing and cloud deployment.
+The system follows a standard ETL (Extract, Transform, Load) pattern to ensure data integrity and high availability.
 
 
 
-High-Level Flow
+High-Level Data Flow
 
-CSV / APIs (CoinPaprika, CoinGecko)
 
-&nbsp;       ↓
 
-&nbsp;  Raw Tables (Postgres)
+Extraction: Ingests data from CSV files and external REST APIs.
 
-&nbsp;       ↓
 
-&nbsp;Normalized Unified Schema
 
-&nbsp;       ↓
+Raw Storage: Data is first landed in raw\_\* tables in PostgreSQL.
 
-&nbsp;  FastAPI Backend
 
-&nbsp;       ↓
 
-&nbsp;Public API Endpoints
+Transformation: Normalizes disparate data formats into a Unified Schema.
+
+
+
+Exhibition: A FastAPI application serves the normalized data via public endpoints.
+
+
+
+graph TD
+
+&nbsp;   A\[CSV Source] --> D\[PostgreSQL Raw Tables]
+
+&nbsp;   B\[CoinPaprika API] --> D
+
+&nbsp;   C\[CoinGecko API] --> D
+
+&nbsp;   D --> E{Normalization Engine}
+
+&nbsp;   E --> F\[Unified Schema]
+
+&nbsp;   F --> G\[FastAPI Backend]
+
+&nbsp;   G --> H\[Public API Endpoints]
+
+
+
+
+
+⚙️ Tech Stack
+
+
+
+Language: Python 3.11
+
+
+
+Framework: FastAPI
+
+
+
+Database: PostgreSQL + SQLAlchemy (ORM)
+
+
+
+Infrastructure: Docker \& Docker Compose
+
+
+
+CI/CD: GitHub Actions
+
+
+
+Cloud: AWS EC2 (Ubuntu)
 
 
 
 🗂️ Project Structure
+
+
 
 .
 
@@ -42,27 +90,21 @@ CSV / APIs (CoinPaprika, CoinGecko)
 
 │   └── services.py         # Data access logic
 
-│
-
 ├── ingestion/              # ETL pipelines
 
 │   ├── runner.py           # ETL orchestrator
 
-│   ├── csv\_ingestion.py    # CSV ingestion
+│   ├── csv\_ingestion.py    # CSV ingestion logic
 
 │   ├── coinpaprika\_ingestion.py
 
 │   └── coingecko\_ingestion.py
 
-│
-
 ├── data/
 
-│   └── sample.csv          # CSV source
+│   └── sample.csv          # Local data source
 
-│
-
-├── tests/                  # Test suite
+├── tests/                  # Pytest suite
 
 │   ├── test\_api.py
 
@@ -70,103 +112,45 @@ CSV / APIs (CoinPaprika, CoinGecko)
 
 │   └── test\_failure.py
 
-│
+├── docker-compose.yml      # Orchestration
 
-├── docker-compose.yml
-
-├── Dockerfile
+├── Dockerfile              # Backend container definition
 
 ├── start.sh                # Startup script (ETL + API)
 
-├── requirements.txt
+├── requirements.txt        # Python dependencies
 
-├── pytest.ini
-
-├── .github/workflows/ci.yml
-
-└── README.md
+└── .github/workflows/ci.yml # GitHub Actions config
 
 
-
-⚙️ Tech Stack
-
-
-
-Python 3.11
-
-
-
-FastAPI
-
-
-
-PostgreSQL
-
-
-
-SQLAlchemy
-
-
-
-Docker \& Docker Compose
-
-
-
-GitHub Actions (CI)
-
-
-
-AWS EC2 (Deployment)
 
 
 
 🔄 Data Ingestion (ETL)
 
-Sources
+
+
+The ETL engine is built for reliability and scale.
 
 
 
-CSV (data/sample.csv)
+Key Features
 
 
 
-CoinPaprika API
+Incremental Ingestion: Skips already processed data to save resources.
 
 
 
-CoinGecko API
+Idempotency: Multiple runs produce the same state without duplicates.
 
 
 
-Features
+Resume-on-failure: Logic to pick up where it left off after an interruption.
 
 
 
-Raw data stored in raw\_\* tables
-
-
-
-Normalized unified schema
-
-
-
-Type validation
-
-
-
-Incremental ingestion (no reprocessing)
-
-
-
-Idempotent writes
-
-
-
-Resume-on-failure logic
-
-
-
-Run metadata stored in etl\_runs
+Metadata Tracking: Every run status is logged in the etl\_runs table.
 
 
 
@@ -174,15 +158,7 @@ Execution
 
 
 
-ETL runs:
-
-
-
-Automatically on container startup
-
-
-
-On-demand via:
+The ETL runs automatically on container startup. To trigger it manually:
 
 
 
@@ -192,269 +168,133 @@ docker-compose run --rm api python -m ingestion.runner
 
 
 
-Hourly via cron on EC2
-
-
-
 🌐 API Endpoints
 
-GET /health
 
 
+Endpoint
 
-Health check endpoint.
 
 
+Method
 
-Returns:
 
 
+Description
 
-Database connectivity
 
 
+/health
 
-Last ETL run status
 
 
+GET
 
-{
 
-&nbsp; "status": "ok",
 
-&nbsp; "db": "connected"
+System health, DB connection, and last ETL status.
 
-}
 
 
+/data
 
-GET /data
 
 
+GET
 
-Fetch normalized data.
 
 
+Paginated and filtered access to normalized crypto data.
 
-Features
 
 
+/stats
 
-Pagination
 
 
+GET
 
-Filtering
 
 
+Statistics on records processed and ETL run durations.
 
-Metadata included
 
 
+/metrics
 
-Example:
 
 
+GET
 
-{
 
-&nbsp; "request\_id": "...",
 
-&nbsp; "api\_latency\_ms": 12,
+Prometheus-style metrics for monitoring.
 
-&nbsp; "pagination": {
 
-&nbsp;   "limit": 10,
 
-&nbsp;   "offset": 0,
+🐳 Getting Started (Docker)
 
-&nbsp;   "total": 12240
 
-&nbsp; },
 
-&nbsp; "data": \[...]
+Build and Run
 
-}
 
-
-
-GET /stats
-
-
-
-ETL run statistics.
-
-
-
-Returns:
-
-
-
-Records processed
-
-
-
-Duration
-
-
-
-Last success \& failure timestamps
-
-
-
-Run metadata
-
-
-
-GET /metrics
-
-
-
-Prometheus-style metrics.
-
-
-
-Example:
-
-
-
-etl\_last\_run\_success 1
-
-etl\_records\_total 12240
-
-api\_status 1
-
-
-
-🐳 Dockerized System
-
-
-
-The entire system runs via Docker.
-
-
-
-Build \& Run
 
 docker-compose up --build
 
 
 
-Stop
-
-docker-compose down
 
 
-
-🧪 Testing
+Running Tests
 
 
 
-Tests run inside Docker, matching production.
+Tests run inside the container to ensure environment parity:
 
 
-
-Run Tests
 
 docker-compose run --rm api pytest
 
 
 
-Coverage
 
 
+☁️ Deployment \& CI/CD
 
-ETL transformations
 
 
+GitHub Actions (CI)
 
-Incremental ingestion
 
 
+On every Push or Pull Request, the system:
 
-Failure recovery
 
 
+Builds the Docker images.
 
-API endpoints
 
 
+Spins up a temporary Postgres instance.
 
-🔁 CI/CD Pipeline (P2)
 
 
+Runs the full test suite (API, ETL, and Failure Recovery).
 
-GitHub Actions automatically runs on:
 
 
+AWS EC2 Deployment
 
-Push
 
 
+The system is deployed on an Ubuntu EC2 instance. The ETL is scheduled via cron to run hourly:
 
-Pull Request
 
 
+0 \* \* \* \* cd /home/ubuntu/project-root \&\& docker-compose run --rm api python -m ingestion.runner >> etl.log 2>\&1
 
-CI Steps
 
-
-
-Checkout code
-
-
-
-Build Docker images
-
-
-
-Run test suite inside containers
-
-
-
-CI config:
-
-
-
-.github/workflows/ci.yml
-
-
-
-
-
-✅ All tests must pass for CI to succeed
-
-
-
-☁️ Cloud Deployment (AWS EC2)
-
-
-
-Deployed on AWS EC2 (Ubuntu)
-
-
-
-Docker + Docker Compose installed
-
-
-
-Public API exposed
-
-
-
-Scheduled ETL via cron
-
-
-
-Cron Job
-
-
-
-Runs ETL hourly:
-
-
-
-0 \* \* \* \* cd /home/ubuntu/kasparro-backend-amal-joseph \&\& docker-compose run --rm api python -m ingestion.runner >> etl.log 2>\&1
 
 
 
@@ -462,13 +302,13 @@ Runs ETL hourly:
 
 
 
-API keys stored using environment variables
+API keys and database credentials are managed via environment variables.
 
 
 
-No secrets committed to source control
+Use a .env file for local development (not committed to version control).
 
 
 
-Docker .env supported
+Production secrets are managed via GitHub Secrets or AWS Parameter Store.
 
