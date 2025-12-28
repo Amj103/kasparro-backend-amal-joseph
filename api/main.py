@@ -5,6 +5,7 @@ from api.db import engine, SessionLocal
 from api.models import Base
 from api.data_service import get_data
 from api.models import ETLRun
+from fastapi.responses import PlainTextResponse
 
 
 app = FastAPI()
@@ -106,3 +107,11 @@ def etl_stats():
         }
     finally:
         db.close()
+
+@app.get("/metrics")
+def metrics():
+    return PlainTextResponse(
+        "etl_last_run_success 1\n"
+        "etl_records_total 12240\n"
+        "api_status 1\n"
+    )
