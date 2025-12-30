@@ -1,60 +1,60 @@
 import requests
-from sqlalchemy.orm import Session
-from api.models import NormalizedData, ETLCheckpoint
+from datetime import datetime
 
-SOURCE_NAME = "coingecko"
-BASE_URL = "https://api.coingecko.com/api/v3"
+from api.db import SessionLocal
+from api.models import Asset, AssetMetric
 
 
-def ingest_coingecko(db: Session):
-    checkpoint = db.get(ETLCheckpoint, SOURCE_NAME)
-    page = checkpoint.last_processed_id if checkpoint else 1
-    processed = 0
+COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
+COINS = ["bitcoin", "ethereum", "binancecoin", "ripple", "tether"]
+VS_CURRENCY = "usd"
 
-    while True:
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 250,
-            "page": page,
-            "sparkline": "false",
-        }
 
-        resp = requests.get(f"{BASE_URL}/coins/markets", params=params, timeout=15)
-        resp.raise_for_status()
-        coins = resp.json()
+def run_coingecko_ingestion():
+    db = SessionLocal()
+    records = 0
 
-        if not coins:
-            break
-
-        for coin in coins:
-            # Upsert price into normalized_data
-            db.merge(
-                NormalizedData(
-                    source=SOURCE_NAME,
-                    external_id=hash(coin["id"]) & 0x7FFFFFFF,
-                    name=coin.get("name"),
-                    value=coin.get("current_price"),
-                    event_time=None,
-                )
-            )
-            processed += 1
-
-        page += 1
-
-        # Be gentle to the API
-        if page > 5:  # limit pages per run (safe default)
-            break
-
-    if checkpoint:
-        checkpoint.last_processed_id = page
-    else:
-        db.add(
-            ETLCheckpoint(
-                source_name=SOURCE_NAME,
-                last_processed_id=page
-            )
+    try:
+        response = requests.get(
+            COINGECKO_URL,
+            params={
+                "ids": ",".join(COINS),
+                "vs_currencies": VS_CURRENCY,
+            },
+            timeout=10,
         )
+        response.raise_for_status()
 
-    db.commit()
-    return processed
+        data = response.json()
+
+        for coin_id, price_data in data.items():
+            symbol = coin_id.upper()
+            value = float(price_data[VS_CURRENCY])
+
+            asset = db.query(Asset).filter_by(symbol=symbol).first()
+            if not asset:
+                asset = Asset(symbol=symbol, name=coin_id.capitalize())
+                db.add(asset)
+                db.flush()
+
+            metric = AssetMetric(
+                asset_id=asset.id,
+                source="coingecko",
+                value=value,
+                event_time=datetime.utcnow(),
+            )
+
+            db.add(metric)
+            records += 1
+
+        db.commit()
+        print(f" CoinGecko ingestion completed ({records} records)")
+        return records  
+
+    except Exception as e:
+        db.rollback()
+        print(" CoinGecko ingestion failed:", e)
+        raise
+
+    finally:
+        db.close()

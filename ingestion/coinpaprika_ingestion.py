@@ -1,56 +1,53 @@
 import requests
-from sqlalchemy.orm import Session
-from api.models import RawCoinPaprika, NormalizedData, ETLCheckpoint
+from datetime import datetime
 
-SOURCE_NAME = "coinpaprika"
-BASE_URL = "https://api.coinpaprika.com/v1"
+from api.db import SessionLocal
+from api.models import Asset, AssetMetric
 
 
-def ingest_coinpaprika(db: Session):
-    checkpoint = db.get(ETLCheckpoint, SOURCE_NAME)
-    last_rank = checkpoint.last_processed_id if checkpoint else 0
-    processed = 0
+TICKERS_URL = "https://api.coinpaprika.com/v1/tickers"
+LIMIT = 10  
 
-    response = requests.get(f"{BASE_URL}/coins", timeout=10)
-    response.raise_for_status()
-    coins = response.json()
 
-    for coin in coins:
-        rank = coin.get("rank") or 0
-        if rank <= last_rank:
-            continue
+def run_coinpaprika_ingestion():
+    db = SessionLocal()
+    records = 0
 
-        coin_id = coin["id"]
+    try:
+        response = requests.get(TICKERS_URL, timeout=10)
+        response.raise_for_status()
 
-        db.merge(
-            RawCoinPaprika(
-                id=coin_id,
-                payload=coin
+        data = response.json()[:LIMIT]
+
+        for item in data:
+            symbol = item["symbol"]
+            name = item["name"]
+            price = item["quotes"]["USD"]["price"]
+
+            asset = db.query(Asset).filter_by(symbol=symbol).first()
+            if not asset:
+                asset = Asset(symbol=symbol, name=name)
+                db.add(asset)
+                db.flush()
+
+            metric = AssetMetric(
+                asset_id=asset.id,
+                source="coinpaprika",
+                value=float(price),
+                event_time=datetime.utcnow(),
             )
-        )
 
-        db.merge(
-            NormalizedData(
-                source=SOURCE_NAME,
-                external_id=rank,
-                name=coin.get("name"),
-                value=None,
-                event_time=None
-            )
-        )
+            db.add(metric)
+            records += 1
 
-        last_rank = rank
-        processed += 1
+        db.commit()
+        print(f" CoinPaprika ingestion completed ({records} records)")
+        return records  
 
-    if checkpoint:
-        checkpoint.last_processed_id = last_rank
-    else:
-        db.add(
-            ETLCheckpoint(
-                source_name=SOURCE_NAME,
-                last_processed_id=last_rank
-            )
-        )
+    except Exception as e:
+        db.rollback()
+        print(" CoinPaprika ingestion failed:", e)
+        raise
 
-    db.commit()
-    return processed
+    finally:
+        db.close()

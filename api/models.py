@@ -1,53 +1,73 @@
-from sqlalchemy import Column, Integer, BigInteger, String, JSON, TIMESTAMP, Numeric, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func
-from sqlalchemy import DateTime, Text
+from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Integer
+from sqlalchemy.orm import declarative_base, relationship
+from datetime import datetime
 import uuid
 
 Base = declarative_base()
 
-class RawCSVData(Base):
-    __tablename__ = "raw_csv_data"
 
-    id = Column(BigInteger, primary_key=True)
-    payload = Column(JSON, nullable=False)
-    ingested_at = Column(TIMESTAMP, server_default=func.now())
+class Asset(Base):
+    __tablename__ = "assets"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    symbol = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+
+    sources = relationship("AssetSourceMap", back_populates="asset")
+    metrics = relationship("AssetMetric", back_populates="asset")
 
 
-class NormalizedData(Base):
-    __tablename__ = "normalized_data"
+class AssetSourceMap(Base):
+    __tablename__ = "asset_source_map"
 
     id = Column(Integer, primary_key=True)
-    source = Column(String(50), nullable=False)
-    external_id = Column(BigInteger, nullable=False)
-    name = Column(String)
-    value = Column(Numeric)
-    event_time = Column(TIMESTAMP)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=False)
+    source = Column(String, nullable=False)
+    external_id = Column(String, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_source_external"),
-    )
+    asset = relationship("Asset", back_populates="sources")
 
 
-class ETLCheckpoint(Base):
-    __tablename__ = "etl_checkpoints"
+class AssetMetric(Base):
+    __tablename__ = "asset_metrics"
 
-    source_name = Column(String(50), primary_key=True)
-    last_processed_id = Column(BigInteger, nullable=False)
+    id = Column(Integer, primary_key=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=False)
+    source = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+    event_time = Column(DateTime, default=datetime.utcnow)
+
+    asset = relationship("Asset", back_populates="metrics")
+
 
 class ETLRun(Base):
     __tablename__ = "etl_runs"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    started_at = Column(DateTime)
+    id = Column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+    )
+
+    started_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
     ended_at = Column(DateTime)
-    status = Column(String(20))  # success / failed
-    records_processed = Column(Integer)
-    error_message = Column(Text)
 
-class RawCoinPaprika(Base):
-    __tablename__ = "raw_coinpaprika"
+    status = Column(
+        String,
+        nullable=False,
+    )
 
-    id = Column(String, primary_key=True)
-    payload = Column(JSON, nullable=False)
-    ingested_at = Column(TIMESTAMP, server_default=func.now())
+    records_processed = Column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    error_message = Column(String)
+

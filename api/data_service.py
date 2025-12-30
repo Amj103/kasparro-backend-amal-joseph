@@ -1,27 +1,38 @@
-
-from sqlalchemy.orm import Session
-from api.models import NormalizedData
+from api.models import Asset, AssetMetric
 
 
-def get_data(
-    db: Session,
-    source: str | None = None,
-    limit: int = 10,
-    offset: int = 0,
-):
-    query = db.query(NormalizedData)
+def get_data(db, source=None, limit=10, offset=0):
+    query = (
+        db.query(
+            Asset.symbol,
+            Asset.name,
+            AssetMetric.source,
+            AssetMetric.value,
+            AssetMetric.event_time
+        )
+        .join(AssetMetric)
+    )
 
     if source:
-        query = query.filter(NormalizedData.source == source)
+        query = query.filter(AssetMetric.source == source)
 
     total = query.count()
 
     rows = (
         query
-        .order_by(NormalizedData.id)
+        .order_by(Asset.symbol)
         .offset(offset)
         .limit(limit)
         .all()
     )
 
-    return total, rows
+    return total, [
+        {
+            "symbol": s,
+            "name": n,
+            "source": src,
+            "value": v,
+            "event_time": t,
+        }
+        for s, n, src, v, t in rows
+    ]

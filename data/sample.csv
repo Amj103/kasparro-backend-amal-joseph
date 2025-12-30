@@ -1,4 +1,6 @@
-id,name,value,event_time
-1,Apple,10.5,2024-01-01
-2,Banana,5.2,2024-01-02
-3,Orange,7.8,2024-01-03
+symbol,name,price
+BTC,Bitcoin,45000
+ETH,Ethereum,3200
+USDT,Tether,1
+BNB,BNB,400
+XRP,XRP,0.6

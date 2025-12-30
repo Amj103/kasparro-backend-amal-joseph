@@ -1,50 +1,52 @@
 import csv
-from sqlalchemy.orm import Session
-from api.models import RawCSVData, NormalizedData, ETLCheckpoint
+from datetime import datetime
 
-SOURCE_NAME = "csv"
+from api.db import SessionLocal
+from api.models import Asset, AssetMetric
 
 
-def ingest_csv(db: Session, file_path: str):
-    checkpoint = db.get(ETLCheckpoint, SOURCE_NAME)
-    last_id = checkpoint.last_processed_id if checkpoint else 0
-    processed = 0
+CSV_PATH = "data/sample.csv"
 
-    with open(file_path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            row_id = int(row["id"])
-            if row_id <= last_id:
-                continue
 
-            # raw storage
-            raw = RawCSVData(
-                id=row_id,
-                payload=row
-            )
-            db.merge(raw)
+def run_csv_ingestion():
+    db = SessionLocal()
+    records = 0
 
-            # normalized storage
-            normalized = NormalizedData(
-                source=SOURCE_NAME,
-                external_id=row_id,
-                name=row["name"],
-                value=row["value"],
-                event_time=row["event_time"]
-            )
-            db.merge(normalized)
+    try:
+        with open(CSV_PATH, newline="") as csvfile:
+            reader = csv.DictReader(csvfile)
 
-            last_id = row_id
-            processed += 1
+            for row in reader:
+                symbol = row["symbol"].strip().upper()
+                name = row["name"].strip()
+                value = float(row["price"])
 
-    if checkpoint:
-        checkpoint.last_processed_id = last_id
-    else:
-        checkpoint = ETLCheckpoint(
-            source_name=SOURCE_NAME,
-            last_processed_id=last_id
-        )
-        db.add(checkpoint)
+                # Check if asset exists
+                asset = db.query(Asset).filter_by(symbol=symbol).first()
 
-    db.commit()
-    return processed
+                if not asset:
+                    asset = Asset(symbol=symbol, name=name)
+                    db.add(asset)
+                    db.flush()  # get asset.id
+
+                metric = AssetMetric(
+                    asset_id=asset.id,
+                    source="csv",
+                    value=value,
+                    event_time=datetime.utcnow(),
+                )
+
+                db.add(metric)
+                records += 1
+
+        db.commit()
+        print(f" CSV ingestion completed ({records} records)")
+        return records
+
+    except Exception as e:
+        db.rollback()
+        print(" CSV ingestion failed:", e)
+        raise
+
+    finally:
+        db.close()

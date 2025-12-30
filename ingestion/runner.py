@@ -1,59 +1,91 @@
-from api.db import SessionLocal
-from ingestion.csv_ingestion import ingest_csv
-from ingestion.coinpaprika_ingestion import ingest_coinpaprika
-from ingestion.coingecko_ingestion import ingest_coingecko
-from api.models import ETLRun
-from datetime import datetime
-import json
 import time
+from datetime import datetime
+
+from sqlalchemy import text
+
+from api.db import SessionLocal, engine
+from api.models import ETLRun, Base
+
+from ingestion.csv_ingestion import run_csv_ingestion
+from ingestion.coingecko_ingestion import run_coingecko_ingestion
+from ingestion.coinpaprika_ingestion import run_coinpaprika_ingestion
+
+
+MAX_RETRIES = 15
+SLEEP_SECONDS = 2
+
+
+def wait_for_db():
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print(" Database connection established")
+            return
+        except Exception:
+            print(f" Database not ready (attempt {attempt}/{MAX_RETRIES})")
+            time.sleep(SLEEP_SECONDS)
+
+    raise RuntimeError("Database never became ready")
 
 
 def run_etl():
-    db = SessionLocal()
-    start_time = time.time()
+    print(" Starting ETL pipeline")
 
-    run = ETLRun(
-        started_at=datetime.utcnow(),
+    # 1️⃣ Wait for DB
+    wait_for_db()
+
+    # 2️⃣ CREATE ALL TABLES (CRITICAL FIX)
+    Base.metadata.create_all(bind=engine)
+    print("Database schema ensured")
+
+    db = SessionLocal()
+
+    etl_run = ETLRun(
         status="running",
-        records_processed=0
+        started_at=datetime.utcnow(),
+        records_processed=0,
     )
-    db.add(run)
-    db.commit()
 
     try:
-        records = 0
+        # 3️⃣ Insert ETL run start
+        db.add(etl_run)
+        db.commit()
+        db.refresh(etl_run)
 
-        records += ingest_csv(db, "data/sample.csv")
-        records += ingest_coinpaprika(db)
-        records += ingest_coingecko(db)
+        total_records = 0
 
-        run.status = "success"
-        run.records_processed = records
+        # 4️⃣ Run ingestions
+        print(" Running CSV ingestion")
+        total_records += run_csv_ingestion()
 
-        print(json.dumps({
-            "event": "etl_run",
-            "status": "success",
-            "records_processed": records,
-            "started_at": run.started_at.isoformat(),
-            "ended_at": datetime.utcnow().isoformat(),
-            "duration_seconds": round(time.time() - start_time, 2)
-        }))
+        print(" Running CoinGecko ingestion")
+        total_records += run_coingecko_ingestion()
+
+        print(" Running CoinPaprika ingestion")
+        total_records += run_coinpaprika_ingestion()
+
+        # 5️⃣ Mark success
+        etl_run.status = "success"
+        etl_run.records_processed = total_records
+        etl_run.ended_at = datetime.utcnow()
+
+        db.commit()
+        print(f" ETL completed successfully ({total_records} records)")
 
     except Exception as e:
-        run.status = "failed"
-        run.error_message = str(e)
+        db.rollback()
 
-        print(json.dumps({
-            "event": "etl_run",
-            "status": "failure",
-            "error": str(e),
-            "started_at": run.started_at.isoformat(),
-            "ended_at": datetime.utcnow().isoformat()
-        }))
+        # 6️⃣ Mark failure safely
+        etl_run.status = "failure"
+        etl_run.error_message = str(e)
+        etl_run.ended_at = datetime.utcnow()
+
+        db.commit()
+        print(" ETL failed:", e)
+        raise
 
     finally:
-        run.ended_at = datetime.utcnow()
-        db.commit()
         db.close()
 
 
