@@ -1,314 +1,108 @@
-📌 Architecture Overview
+Project K: Unified Crypto ETL & API Pipeline
 
+A production-grade, containerized ETL (Extract, Transform, Load) pipeline and FastAPI application. This project automates the ingestion of cryptocurrency data from multiple sources into a unified PostgreSQL schema, deployed on AWS EC2 via a custom CI/CD pipeline.
 
+🚀 Live Cloud Deployment
 
-The system follows a standard ETL (Extract, Transform, Load) pattern to ensure data integrity and high availability.
+The system is currently live and operational on AWS EC2.
 
+Base API URL: http://15.134.212.133:8000
 
+Health Status: http://15.134.212.133:8000/health
 
-High-Level Data Flow
+Dynamic Metrics: http://15.134.212.133:8000/metrics
 
+Data Explorer: http://15.134.212.133:8000/data
 
+🏗️ Architecture & Design
 
-Extraction: Ingests data from CSV files and external REST APIs.
+The system is designed with a modular approach to separate data ingestion from consumption, ensuring scalability and fault tolerance.
 
+1. Ingestion Layer (ETL)
 
+The ETL pipeline is built in Python and handles the complexity of interfacing with diverse data sources:
 
-Raw Storage: Data is first landed in raw\_\* tables in PostgreSQL.
+CSV Ingestion: Processes local data files using a checkpointing system (ETLCheckpoint) to skip already processed files.
 
+External APIs: Integrated with CoinGecko and CoinPaprika. It handles data normalization, converting disparate JSON structures into a unified internal model.
 
+2. Storage Layer
 
-Transformation: Normalizes disparate data formats into a Unified Schema.
+Uses a PostgreSQL database managed via SQLAlchemy ORM.
 
+Unified Schema: All assets are mapped to a single AssetMetric table, allowing for cross-source analysis.
 
+Auditability: The ETLRun table tracks the metadata of every pipeline execution (duration, record count, success/failure).
 
-Exhibition: A FastAPI application serves the normalized data via public endpoints.
+3. API Layer
 
+A FastAPI application serves the ingested data. It includes pagination for the /data endpoint and custom observability logic for /metrics.
 
+4. DevOps & Cloud
 
-graph TD
+Containerization: Entire stack is orchestrated with Docker Compose.
 
-&nbsp;   A\[CSV Source] --> D\[PostgreSQL Raw Tables]
+CI/CD: GitHub Actions automates testing (Pytest) and secure deployment via SSH.
 
-&nbsp;   B\[CoinPaprika API] --> D
+🛠️ Local Setup
 
-&nbsp;   C\[CoinGecko API] --> D
+1. Clone the repository
 
-&nbsp;   D --> E{Normalization Engine}
+git clone [https://github.com/Amj103/kasparro-backend-amal-joseph.git](https://github.com/Amj103/kasparro-backend-amal-joseph.git)
+cd kasparro-backend-amal-joseph
 
-&nbsp;   E --> F\[Unified Schema]
 
-&nbsp;   F --> G\[FastAPI Backend]
+2. Environment Configuration
 
-&nbsp;   G --> H\[Public API Endpoints]
+Create a .env file in the project root:
 
+POSTGRES_USER=kasparro
+POSTGRES_PASSWORD=kasparro
+POSTGRES_DB=kasparro_db
+DATABASE_URL=postgresql://kasparro:kasparro@db:5432/kasparro_db
 
 
+3. Launch Services
 
+# Build images and start containers in detached mode
+docker-compose up --build -d
 
-⚙️ Tech Stack
 
+4. Running Tests
 
-
-Language: Python 3.11
-
-
-
-Framework: FastAPI
-
-
-
-Database: PostgreSQL + SQLAlchemy (ORM)
-
-
-
-Infrastructure: Docker \& Docker Compose
-
-
-
-CI/CD: GitHub Actions
-
-
-
-Cloud: AWS EC2 (Ubuntu)
-
-
-
-🗂️ Project Structure
-
-
-
-.
-
-├── api/                    # FastAPI application
-
-│   ├── main.py             # API entry point
-
-│   ├── db.py               # DB session \& engine
-
-│   ├── models.py           # SQLAlchemy models
-
-│   └── services.py         # Data access logic
-
-├── ingestion/              # ETL pipelines
-
-│   ├── runner.py           # ETL orchestrator
-
-│   ├── csv\_ingestion.py    # CSV ingestion logic
-
-│   ├── coinpaprika\_ingestion.py
-
-│   └── coingecko\_ingestion.py
-
-├── data/
-
-│   └── sample.csv          # Local data source
-
-├── tests/                  # Pytest suite
-
-│   ├── test\_api.py
-
-│   ├── test\_etl.py
-
-│   └── test\_failure.py
-
-├── docker-compose.yml      # Orchestration
-
-├── Dockerfile              # Backend container definition
-
-├── start.sh                # Startup script (ETL + API)
-
-├── requirements.txt        # Python dependencies
-
-└── .github/workflows/ci.yml # GitHub Actions config
-
-
-
-
-
-🔄 Data Ingestion (ETL)
-
-
-
-The ETL engine is built for reliability and scale.
-
-
-
-Key Features
-
-
-
-Incremental Ingestion: Skips already processed data to save resources.
-
-
-
-Idempotency: Multiple runs produce the same state without duplicates.
-
-
-
-Resume-on-failure: Logic to pick up where it left off after an interruption.
-
-
-
-Metadata Tracking: Every run status is logged in the etl\_runs table.
-
-
-
-Execution
-
-
-
-The ETL runs automatically on container startup. To trigger it manually:
-
-
-
-docker-compose run --rm api python -m ingestion.runner
-
-
-
-
-
-🌐 API Endpoints
-
-
-
-Endpoint
-
-
-
-Method
-
-
-
-Description
-
-
-
-/health
-
-
-
-GET
-
-
-
-System health, DB connection, and last ETL status.
-
-
-
-/data
-
-
-
-GET
-
-
-
-Paginated and filtered access to normalized crypto data.
-
-
-
-/stats
-
-
-
-GET
-
-
-
-Statistics on records processed and ETL run durations.
-
-
-
-/metrics
-
-
-
-GET
-
-
-
-Prometheus-style metrics for monitoring.
-
-
-
-🐳 Getting Started (Docker)
-
-
-
-Build and Run
-
-
-
-docker-compose up --build
-
-
-
-
-
-Running Tests
-
-
-
-Tests run inside the container to ensure environment parity:
-
-
-
+# Run the test suite inside the API container
 docker-compose run --rm api pytest
 
 
+🛠️ Features implemented (P-Level)
 
+P0.3/P2.3: Full Dockerization and Cloud Deployment on AWS.
 
+P1.1: Multi-source ETL (CSV + 2 External APIs).
 
-☁️ Deployment \& CI/CD
+P1.2: Incremental ingestion logic using ETLCheckpoint.
 
+P2.4: Observability layer with dynamic /metrics endpoint.
 
+P1.4: Comprehensive testing suite including API health and failure scenarios.
 
-GitHub Actions (CI)
+⚙️ CI/CD Workflow
 
+The deployment is fully automated. On every push to main:
 
+Test Job: GitHub Actions spins up a temporary environment, builds the image, and runs the test suite.
 
-On every Push or Pull Request, the system:
+Deploy Job: Upon successful tests, it uses SSH to connect to 15.134.212.133, pulls the latest code, and restarts the containers using docker-compose up --build -d.
 
+📊 Sample ETL Output
 
-
-Builds the Docker images.
-
-
-
-Spins up a temporary Postgres instance.
-
-
-
-Runs the full test suite (API, ETL, and Failure Recovery).
-
-
-
-AWS EC2 Deployment
-
-
-
-The system is deployed on an Ubuntu EC2 instance. The ETL is scheduled via cron to run hourly:
-
-
-
-0 \* \* \* \* cd /home/ubuntu/project-root \&\& docker-compose run --rm api python -m ingestion.runner >> etl.log 2>\&1
-
-
-
-
-
-🔐 Secrets Management
-
-
-
-API keys and database credentials are managed via environment variables.
-
-
-
-Use a .env file for local development (not committed to version control).
-
-
-
-Production secrets are managed via GitHub Secrets or AWS Parameter Store.
-
+Starting ETL pipeline
+Database connection established
+Database schema ensured
+Running CSV ingestion
+CSV ingestion completed (5 records)
+Running CoinGecko ingestion
+CoinGecko ingestion completed (5 records)
+Running CoinPaprika ingestion
+CoinPaprika ingestion completed (10 records)
+ETL completed successfully (20 records)

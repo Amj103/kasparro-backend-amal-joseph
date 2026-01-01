@@ -2,8 +2,9 @@ from fastapi import FastAPI, Query
 import time, uuid
 from sqlalchemy import text
 from api.db import engine, SessionLocal
-from api.models import Base, ETLRun  # Ensure ETLRun is imported
+from api.models import Base, ETLRun, AssetMetric  # Added AssetMetric
 from api.data_service import get_data
+from sqlalchemy import func
 
 app = FastAPI()
 
@@ -69,6 +70,28 @@ def etl_stats():
                     "error_message": r.error_message
                 } for r in runs
             ]
+        }
+    finally:
+        db.close()
+
+@app.get("/metrics")
+def get_metrics():
+    """
+    P2.4 Differentiator: Dynamic Observability Layer.
+    Returns real-time processing metrics from the database.
+    """
+    db = SessionLocal()
+    try:
+        # Query live counts from your unified schema
+        total_assets = db.query(func.count(AssetMetric.id)).scalar()
+        last_run = db.query(ETLRun).order_by(ETLRun.started_at.desc()).first()
+        
+        return {
+            "system_status": "healthy",
+            "total_records_ingested": total_assets or 0,
+            "last_etl_run_records": last_run.records_processed if last_run else 0,
+            "active_sources": ["csv", "coingecko", "coinpaprika"],
+            "deployment_platform": "AWS EC2"
         }
     finally:
         db.close()
