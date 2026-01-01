@@ -36,6 +36,6 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /home/ubuntu/project_k
+            cd /home/ubuntu/kasparro-backend-amal-joseph
             git pull origin main
-            
+            docker compose up --build -d
