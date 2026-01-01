@@ -1,11 +1,18 @@
+import pytest
 from ingestion.csv_ingestion import ingest_csv
 from api.db import SessionLocal
-import pytest
+from api.models import ETLCheckpoint
 
 def test_etl_failure():
     db = SessionLocal()
 
-    with pytest.raises(Exception):
-        ingest_csv(db, "data/non_existent.csv")
+    try:
+        
+        db.query(ETLCheckpoint).filter_by(source_name="csv").delete()
+        db.commit()
 
-    db.close()
+        with pytest.raises(Exception):
+            ingest_csv(db, "data/non_existent.csv")
+            
+    finally:
+        db.close()
