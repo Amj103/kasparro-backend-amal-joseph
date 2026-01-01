@@ -1,0 +1,23 @@
+name: Cloud Deployment
+
+on:
+  push:
+    branches: [ main ] # Runs every time you push to the main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}      # Your EC2 Public IP
+          username: ubuntu                    # Usually 'ubuntu' for EC2
+          key: ${{ secrets.EC2_SSH_KEY }}     # Your .pem file content
+          script: |
+            cd /home/ubuntu/project_k
+            git pull origin main
+            docker-compose up --build -d
