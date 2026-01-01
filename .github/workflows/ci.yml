@@ -38,4 +38,5 @@ jobs:
           script: |
             cd /home/ubuntu/kasparro-backend-amal-joseph
             git pull origin main
-            docker compose up --build -d
+            docker-compose down
+            docker-compose up --build -d
